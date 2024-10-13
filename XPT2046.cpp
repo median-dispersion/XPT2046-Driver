@@ -60,7 +60,7 @@ Point averageSamples(Point *samples, uint8_t numberOfSamples) {
 // ================================================================================================
 // Constructor
 // ================================================================================================
-XPT2046::XPT2046(uint8_t csPin, uint8_t irqPin): _csPin(csPin), _irqPin(irqPin), _spi(SPI), _samples(50), _rotation(0) {}
+XPT2046::XPT2046(uint8_t csPin, uint8_t irqPin): _csPin(csPin), _irqPin(irqPin), _spi(&SPI), _samples(50), _rotation(0) {}
 
 // ================================================================================================
 // Initialize everything
@@ -72,7 +72,7 @@ void XPT2046::begin() {
   pinMode(_irqPin, INPUT);
 
   // SPI begin
-  _spi.begin();
+  _spi->begin();
 
   // Deselect the XPT2046 by setting chip select pin to HIGH
   // LOW = selected, HIGH = unselected
@@ -125,7 +125,7 @@ bool XPT2046::touched() {
 void XPT2046::update() {
 
   // Begin an SPI transaction
-  _spi.beginTransaction(SPI_SETTINGS);
+  _spi->beginTransaction(SPI_SETTINGS);
 
   // Select the XPT2046 via the chip select pin
   digitalWrite(_csPin, LOW);
@@ -138,19 +138,19 @@ void XPT2046::update() {
 
     // Request the touch X and Y position from XPT2046 via SPI
     // Store the result in the sample array
-    samples[sample].x = readValue(POSITION_X, &_spi);
-    samples[sample].y = readValue(POSITION_Y, &_spi);
+    samples[sample].x = readValue(POSITION_X, _spi);
+    samples[sample].y = readValue(POSITION_Y, _spi);
 
   }
 
   // Send a power down command to the XPT2046
-  _spi.transfer(POWER_DOWN);
+  _spi->transfer(POWER_DOWN);
 
   // Deselect the XPT2046
   digitalWrite(_csPin, HIGH);
 
   // End the SPI transaction
-  _spi.endTransaction();
+  _spi->endTransaction();
 
   // Average the samples and store the result in the _position variable
   _position = averageSamples(samples, _samples);
@@ -173,23 +173,23 @@ Point XPT2046::getTouchPosition() {
   switch (_rotation) {
 
     case 0:
-      position.x = 4095 - _position.y;
-      position.y = _position.x;
-    break;
-
-    case 1:
-      position.x = 4095 - _position.x;
+      position.x = _position.x;
       position.y = 4095 - _position.y;
     break;
 
-    case 2:
-      position.x = _position.y;
+    case 1:
+      position.x = 4095 - _position.y;
       position.y = 4095 - _position.x;
     break;
 
-    case 3:
-      position.x = _position.x;
+    case 2:
+      position.x = 4095 - _position.x;
       position.y = _position.y;
+    break;
+
+    case 3:
+      position.x = _position.y;
+      position.y = _position.x;
     break;
 
   }

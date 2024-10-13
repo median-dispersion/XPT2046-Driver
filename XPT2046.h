@@ -25,7 +25,7 @@ class XPT2046 {
 
     uint8_t  _csPin;    // CS pin
     uint8_t  _irqPin;   // IRQ pin
-    SPIClass _spi;      // SPI class
+    SPIClass *_spi;     // SPI pointer
     uint8_t  _samples;  // Current number of samples to average over
     uint8_t  _rotation; // Current rotation
     Point    _position; // Touch position
