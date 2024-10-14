@@ -1,38 +1,70 @@
+/* 
+
+  This is the most basic way of using the XPT2046 Driver library.
+  The library is initialized and then checks if a touch event occurred.
+  If a touch event is captured, the touch position is printed to the Serial console.
+  The X and Y positions are a 12-Bit integer between 0 and 4095.
+  For X and Y coordinates that are mapped to the pixel grid of a display, please look at:
+  Examples > XPT2046 Driver > TouchscreenUsage
+  Examples > XPT2046 Driver > 3PointCalibration
+
+  Median Dispersion 2024
+  https://github.com/median-dispersion/XPT2046-Driver
+
+*/
+
 #include "XPT2046.h"
 
-// Define the pins the touchscreen is connected to
+//-------------------------------------------------------------------------------------------------
+// User configuration
+
+// Define the pins the XPT2046 is connected to
 // For MOSI, MISO and SCK the hardware pins are used
-#define TOUCH_CS_PIN  8
-#define TOUCH_IRQ_PIN 2
+#define TOUCH_CS_PIN  2
+#define TOUCH_IRQ_PIN 3
 
-// Create the XPT2046 touchscreen object
-XPT2046 touchscreen(TOUCH_CS_PIN, TOUCH_IRQ_PIN);
+//-------------------------------------------------------------------------------------------------
+// Global variables
 
+// Create the XPT2046 touch object
+XPT2046 touch(TOUCH_CS_PIN, TOUCH_IRQ_PIN);
+
+// ================================================================================================
+// Setup
+// ================================================================================================
 void setup() {
 
   // Initialize serial communication
   Serial.begin(115200);
 
-  // Initialize the touchscreen
-  touchscreen.begin();
+  // Initialize
+  touch.begin();
 
-  // Set the amounts of samples (optional, default = 50)
-  touchscreen.setSampleCount(50);
+  // The number of samples to average over before returning the touch position (optional, default = 20, range = 1-255)
+  // A higher number of samples will result in a more consistent touch position
+  // But as a consequence will take a longer time to process
+  touch.setSampleCount(20);
 
-  // Set the touchscreen rotation (optional, default = 0)
-  touchscreen.setRotation(0);
+  // Set the rotation (optional, default = 0, values = 0, 1, 2, 3)
+  // 0 = 0°, 1 = 90°, 2 = 180°, 3 = 270°
+  touch.setRotation(0);
 
 }
 
+// ================================================================================================
+// Main loop
+// ================================================================================================
 void loop() {
 
-  // Check if the touchscreen is being touched
-  if (touchscreen.touched()) {
+  // Check if touch event is occurring
+  if (touch.touched()) {
 
     // Get the touch position
-    Point position = touchscreen.getTouchPosition();
+    XPT2046::Point position = touch.getTouchPosition();
 
     // Print the position to the serial console
+    // The position is a 12-Bit integer between 0 and 4096
+    // For X and Y coordinates that are mapped to the pixel grid of a display, please look at the other examples
     Serial.println("X: " + String(position.x) + ", Y: " + String(position.y));
 
   }
