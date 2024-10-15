@@ -73,7 +73,7 @@ uint8_t target     = 0;     // Current target being displayed
 bool    released   = true;  // Flag for checking if touchscreen has been released
 
 // Calibration matrix
-XPT2046::CalibrationMatrix calibrationMatrix; 
+XPT2046::Calibration calibration; 
 
 // Touch targets
 XPT2046::Point targets[3] = {
@@ -125,8 +125,8 @@ void setup() {
   #endif
 
   // Set the calibration matrix width and height to the display's width and height
-  calibrationMatrix.width  = DISPLAY_WIDTH;
-  calibrationMatrix.height = DISPLAY_HEIGHT;
+  calibration.width  = DISPLAY_WIDTH;
+  calibration.height = DISPLAY_HEIGHT;
 
   // Draw the first touch target on screen
   drawTarget(targets[target]);
@@ -208,7 +208,7 @@ void loop() {
       printCalibrationMatrix();
 
       // Set the touchscreen calibration to the calculated matrix
-      touchscreen.setCalibration(calibrationMatrix);
+      touchscreen.setCalibration(calibration);
 
       // Set the calibration flag to true
       calibrated = true;
@@ -285,14 +285,14 @@ void drawCalibratedScreen(XPT2046::Point position) {
   canvas.fillScreen(ILI9341_BLACK);
 
   // Create the status message
-  String status = "A: " + String(calibrationMatrix.A, 7)   + "\n" +
-                  "B: " + String(calibrationMatrix.B, 7)   + "\n" +
-                  "C: " + String(calibrationMatrix.C, 7)   + "\n" +
-                  "D: " + String(calibrationMatrix.D, 7)   + "\n" +
-                  "E: " + String(calibrationMatrix.E, 7)   + "\n" +
-                  "F: " + String(calibrationMatrix.F, 7)   + "\n" +
-                  "W: " + String(calibrationMatrix.width)  + "\n" +
-                  "H: " + String(calibrationMatrix.height) + "\n" +
+  String status = "A: " + String(calibration.A, 7)   + "\n" +
+                  "B: " + String(calibration.B, 7)   + "\n" +
+                  "C: " + String(calibration.C, 7)   + "\n" +
+                  "D: " + String(calibration.D, 7)   + "\n" +
+                  "E: " + String(calibration.E, 7)   + "\n" +
+                  "F: " + String(calibration.F, 7)   + "\n" +
+                  "W: " + String(calibration.width)  + "\n" +
+                  "H: " + String(calibration.height) + "\n" +
                   "X: " + String(position.x)               + "\n" +
                   "Y: " + String(position.y);
 
@@ -351,12 +351,12 @@ void calculateCalibrationMatrix() {
   }
 
   // Calculate the calibration matrix coefficients
-  calibrationMatrix.A = ((targetX1 - targetX3) * (measurementY2 - measurementY3) - (targetX2 - targetX3) * (measurementY1 - measurementY3)) / determinant;
-  calibrationMatrix.B = ((targetX2 - targetX3) * (measurementX1 - measurementX3) - (targetX1 - targetX3) * (measurementX2 - measurementX3)) / determinant;
-  calibrationMatrix.C = (targetX1 * (measurementX2 * measurementY3 - measurementX3 * measurementY2) + targetX2 * (measurementX3 * measurementY1 - measurementX1 * measurementY3) + targetX3 * (measurementX1 * measurementY2 - measurementX2 * measurementY1)) / determinant;
-  calibrationMatrix.D = ((targetY1 - targetY3) * (measurementY2 - measurementY3) - (targetY2 - targetY3) * (measurementY1 - measurementY3)) / determinant;
-  calibrationMatrix.E = ((targetY2 - targetY3) * (measurementX1 - measurementX3) - (targetY1 - targetY3) * (measurementX2 - measurementX3)) / determinant;
-  calibrationMatrix.F = (targetY1 * (measurementX2 * measurementY3 - measurementX3 * measurementY2) + targetY2 * (measurementX3 * measurementY1 - measurementX1 * measurementY3) + targetY3 * (measurementX1 * measurementY2 - measurementX2 * measurementY1)) / determinant;
+  calibration.A = ((targetX1 - targetX3) * (measurementY2 - measurementY3) - (targetX2 - targetX3) * (measurementY1 - measurementY3)) / determinant;
+  calibration.B = ((targetX2 - targetX3) * (measurementX1 - measurementX3) - (targetX1 - targetX3) * (measurementX2 - measurementX3)) / determinant;
+  calibration.C = (targetX1 * (measurementX2 * measurementY3 - measurementX3 * measurementY2) + targetX2 * (measurementX3 * measurementY1 - measurementX1 * measurementY3) + targetX3 * (measurementX1 * measurementY2 - measurementX2 * measurementY1)) / determinant;
+  calibration.D = ((targetY1 - targetY3) * (measurementY2 - measurementY3) - (targetY2 - targetY3) * (measurementY1 - measurementY3)) / determinant;
+  calibration.E = ((targetY2 - targetY3) * (measurementX1 - measurementX3) - (targetY1 - targetY3) * (measurementX2 - measurementX3)) / determinant;
+  calibration.F = (targetY1 * (measurementX2 * measurementY3 - measurementX3 * measurementY2) + targetY2 * (measurementX3 * measurementY1 - measurementX1 * measurementY3) + targetY3 * (measurementX1 * measurementY2 - measurementX2 * measurementY1)) / determinant;
 
 }
 
@@ -368,24 +368,24 @@ void printCalibrationMatrix() {
   Serial.println("\n\nCalibration matrix coefficients");
   Serial.println("===============================\n");
 
-  Serial.println("A: " + String(calibrationMatrix.A, 7));
-  Serial.println("B: " + String(calibrationMatrix.B, 7));
-  Serial.println("C: " + String(calibrationMatrix.C, 7));
-  Serial.println("D: " + String(calibrationMatrix.D, 7));
-  Serial.println("E: " + String(calibrationMatrix.E, 7));
-  Serial.println("F: " + String(calibrationMatrix.F, 7));
+  Serial.println("A: " + String(calibration.A, 7));
+  Serial.println("B: " + String(calibration.B, 7));
+  Serial.println("C: " + String(calibration.C, 7));
+  Serial.println("D: " + String(calibration.D, 7));
+  Serial.println("E: " + String(calibration.E, 7));
+  Serial.println("F: " + String(calibration.F, 7));
 
   Serial.println("");
 
-  Serial.println("XPT2046::CalibrationMatrix calibrationMatrix = {" + 
-    String(calibrationMatrix.A, 7)   + "," + 
-    String(calibrationMatrix.B, 7)   + "," + 
-    String(calibrationMatrix.C, 7)   + "," +
-    String(calibrationMatrix.D, 7)   + "," +
-    String(calibrationMatrix.E, 7)   + "," +
-    String(calibrationMatrix.F, 7)   + "," +
-    String(calibrationMatrix.width)  + "," +
-    String(calibrationMatrix.height) +
+  Serial.println("XPT2046::Calibration calibration = {" + 
+    String(calibration.A, 7)   + "," + 
+    String(calibration.B, 7)   + "," + 
+    String(calibration.C, 7)   + "," +
+    String(calibration.D, 7)   + "," +
+    String(calibration.E, 7)   + "," +
+    String(calibration.F, 7)   + "," +
+    String(calibration.width)  + "," +
+    String(calibration.height) +
   "};\n");
 
 }

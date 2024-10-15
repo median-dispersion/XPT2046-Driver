@@ -54,7 +54,7 @@
 // To perform a 3 point calibration, use the sketch: Examples > XPT2046 Driver > 3PointCalibration
 // Change the matrix coefficients according to that result
 // Keep in mind when changing the screen rotation a need calibration matrix is also required
-XPT2046::CalibrationMatrix CALIBRATION = {
+XPT2046::Calibration CALIBRATION = {
   
   /* A */ 0.0654288, 
   /* B */ 0.0000242, 

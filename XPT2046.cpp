@@ -1,5 +1,9 @@
 #include "XPT2046.h"
 
+// Default initialization values
+#define DEFAULT_SAMPLE_COUNT 20
+#define DEFAUTL_ROTATION     0
+
 // Command bytes for the XPT2046
 #define POSITION_X  0xD1
 #define POSITION_Y  0x91
@@ -12,153 +16,21 @@
 #define SPI_SETTINGS SPISettings(2000000, MSBFIRST, SPI_MODE0)
 
 //-------------------------------------------------------------------------------------------------
-// Generic functions
-
-// ================================================================================================
-// Read a value from the XPT2046 via SPI
-// ================================================================================================
-uint16_t readValue(uint8_t command, SPIClass *spi) {
-
-  // Send the command byte
-  spi->transfer(command);
-
-  // Read the upper and lower bits of the response
-  uint8_t upperBits = spi->transfer(READ_VALUE);
-  uint8_t lowerBits = spi->transfer(READ_VALUE);
-
-  // Combine the two parts into a 12-bit value
-  return (upperBits << 5) | (lowerBits >> 3);
-
-}
-
-// ================================================================================================
-// Average samples
-// ================================================================================================
-XPT2046::Point averageSamples(XPT2046::Point *samples, uint8_t numberOfSamples) {
-
-  // TODO
-  // This is the most basic averaging approach
-  // A more complex algorithm that removes outliers should be used
-
-  float x = 0.0;
-  float y = 0.0;
-
-  for (uint8_t sample = 0; sample < numberOfSamples; sample++) {
-
-    x += samples[sample].x;
-    y += samples[sample].y;
-
-  }
-
-  return {x / numberOfSamples, y / numberOfSamples};
-
-}
-
-// ================================================================================================
-// Read the touch position
-// ================================================================================================
-XPT2046::Point readTouchPosition(uint8_t numberOfSamples, uint8_t csPin, SPIClass *spi) {
-
-  // Begin an SPI transaction
-  spi->beginTransaction(SPI_SETTINGS);
-
-  // Select the XPT2046 via the chip select pin
-  digitalWrite(csPin, LOW);
-
-  // Create an array of samples
-  XPT2046::Point samples[numberOfSamples];
-
-  // For the number of specified samples
-  for (uint8_t sample = 0; sample < numberOfSamples; sample++) {
-
-    // Request the touch X and Y position from XPT2046 via SPI
-    // Store the result in the sample array
-    samples[sample].x = readValue(POSITION_X, spi);
-    samples[sample].y = readValue(POSITION_Y, spi);
-
-  }
-
-  // Send a power down command to the XPT2046
-  spi->transfer(POWER_DOWN);
-
-  // Deselect the XPT2046
-  digitalWrite(csPin, HIGH);
-
-  // End the SPI transaction
-  spi->endTransaction();
-
-  // Average the samples return the resulting position
-  return averageSamples(samples, numberOfSamples);
-
-}
-
-// ================================================================================================
-// Rotate position
-// ================================================================================================
-XPT2046::Point rotatePosition(XPT2046::Point position, uint8_t rotation) {
-
-  XPT2046::Point rotatedPosition;
-
-  // Depending on the selected rotation, rotate the X and Y coordinates
-  // These rotation values will give the same result as rotating an ILI9341 TFT screen with the Adafruit ILI9341 library
-  switch (rotation) {
-
-    case 0:
-      rotatedPosition.x = position.x;
-      rotatedPosition.y = 4095 - position.y;
-    break;
-
-    case 1:
-      rotatedPosition.x = 4095 - position.y;
-      rotatedPosition.y = 4095 - position.x;
-    break;
-
-    case 2:
-      rotatedPosition.x = 4095 - position.x;
-      rotatedPosition.y = position.y;
-    break;
-
-    case 3:
-      rotatedPosition.x = position.y;
-      rotatedPosition.y = position.x;
-    break;
-
-  }
-
-  // Return rotated position
-  return rotatedPosition;
-
-}
-
-// ================================================================================================
-// Map the position based on the calibration matrix
-// ================================================================================================
-XPT2046::Point mapPosition(XPT2046::Point position, XPT2046::CalibrationMatrix calibration) {
-
-  // Calculated mapped X and Y position
-  int16_t x = calibration.A * position.x + calibration.B * position.y + calibration.C;
-  int16_t y = calibration.D * position.y + calibration.E * position.y + calibration.F;
-
-  // Prevent underflow
-  if (x < 0) { x = 0; }
-  if (y < 0) { y = 0; }
-
-  // Prevent overflow
-  if (x > calibration.width)  { x = calibration.width;  }
-  if (y > calibration.height) { y = calibration.height; }
-
-  // Return mapped positon
-  return {x, y};  
-
-}
-
-//-------------------------------------------------------------------------------------------------
 // XPT2046 Public
 
 // ================================================================================================
 // Constructor
 // ================================================================================================
-XPT2046::XPT2046(uint8_t csPin, uint8_t irqPin): _csPin(csPin), _irqPin(irqPin), _spi(&SPI), _samples(20), _rotation(0), _calibrated(false) {}
+XPT2046::XPT2046(uint8_t csPin, uint8_t irqPin):
+
+  _csPin(csPin),
+  _irqPin(irqPin),
+  _spi(&SPI),
+  _sampleCount(DEFAULT_SAMPLE_COUNT),
+  _rotation(DEFAUTL_ROTATION),
+  _calibrated(false)
+
+{}
 
 // ================================================================================================
 // Initialize everything
@@ -183,7 +55,7 @@ void XPT2046::begin() {
 // ================================================================================================
 void XPT2046::setSampleCount(uint8_t samples) {
 
-  _samples = samples;
+  _sampleCount = samples;
 
 }
 
@@ -199,7 +71,7 @@ void XPT2046::setRotation(uint8_t rotation) {
 // ================================================================================================
 // Set the calibration matrix
 // ================================================================================================
-void  XPT2046::setCalibration(CalibrationMatrix calibration) {
+void  XPT2046::setCalibration(Calibration calibration) {
 
   _calibration = calibration;
 
@@ -209,9 +81,178 @@ void  XPT2046::setCalibration(CalibrationMatrix calibration) {
 }
 
 // ================================================================================================
-// Return the touch status
+// Returns if the touchscreen is being touched
 // ================================================================================================
 bool XPT2046::touched() {
+
+  return _touched();
+
+}
+
+// ================================================================================================
+// Return touch position
+// ================================================================================================
+XPT2046::Point XPT2046::getTouchPosition() {
+
+  // Read the touch position
+  Point position = _readTouchPosition();
+
+  // Rotate the position
+  position = _rotatePosition(position);
+
+  // If the calibration matrix is set, map the position
+  if (_calibrated) { position = _calibratePosition(position); }
+
+  // Return the position
+  return position;
+
+}
+
+//-------------------------------------------------------------------------------------------------
+// XPT2046 Private
+
+// ================================================================================================
+// Read a value from the XPT2046 via SPI
+// ================================================================================================
+uint16_t XPT2046::_readValue(uint8_t command) {
+
+  // Send the command byte
+  _spi->transfer(command);
+
+  // Read the upper and lower bits of the response
+  uint8_t upperBits = _spi->transfer(READ_VALUE);
+  uint8_t lowerBits = _spi->transfer(READ_VALUE);
+
+  // Combine the two parts into a 12-bit value
+  return (upperBits << 5) | (lowerBits >> 3);
+
+}
+
+// ================================================================================================
+// Average samples
+// ================================================================================================
+XPT2046::Point XPT2046::_averageSamples(XPT2046::Point *samples) {
+
+  // TODO
+  // This is the most basic averaging approach
+  // A more complex algorithm that removes outliers should be used
+
+  float x = 0.0;
+  float y = 0.0;
+
+  for (uint8_t sample = 0; sample < _sampleCount; sample++) {
+
+    x += samples[sample].x;
+    y += samples[sample].y;
+
+  }
+
+  return {x / _sampleCount, y / _sampleCount};
+
+}
+
+// ================================================================================================
+// Read the touch position via SPI
+// ================================================================================================
+XPT2046::Point XPT2046::_readTouchPosition() {
+
+  // Begin an SPI transaction
+  _spi->beginTransaction(SPI_SETTINGS);
+
+  // Select the XPT2046 via the chip select pin
+  digitalWrite(_csPin, LOW);
+
+  // Create an array of samples
+  XPT2046::Point samples[_sampleCount];
+
+  // For the number of specified samples
+  for (uint8_t sample = 0; sample < _sampleCount; sample++) {
+
+    // Request the touch X and Y position from XPT2046 via SPI
+    // Store the result in the sample array
+    samples[sample].x = _readValue(POSITION_X);
+    samples[sample].y = _readValue(POSITION_Y);
+
+  }
+
+  // Send a power down command to the XPT2046
+  _spi->transfer(POWER_DOWN);
+
+  // Deselect the XPT2046
+  digitalWrite(_csPin, HIGH);
+
+  // End the SPI transaction
+  _spi->endTransaction();
+
+  // Average the samples return the resulting position
+  return _averageSamples(samples);
+
+}
+
+// ================================================================================================
+// Rotate a position
+// ================================================================================================
+XPT2046::Point XPT2046::_rotatePosition(XPT2046::Point position) {
+
+  XPT2046::Point rotatedPosition;
+
+  // Depending on the selected rotation, rotate the X and Y coordinates
+  // These rotation values will give the same result as rotating an ILI9341 TFT screen with the Adafruit ILI9341 library
+  switch (_rotation) {
+
+    case 0: // 0°
+      rotatedPosition.x = position.x;
+      rotatedPosition.y = 4095 - position.y;
+    break;
+
+    case 1: // 90°
+      rotatedPosition.x = 4095 - position.y;
+      rotatedPosition.y = 4095 - position.x;
+    break;
+
+    case 2: // 180°
+      rotatedPosition.x = 4095 - position.x;
+      rotatedPosition.y = position.y;
+    break;
+
+    case 3: // 270°
+      rotatedPosition.x = position.y;
+      rotatedPosition.y = position.x;
+    break;
+
+  }
+
+  // Return rotated position
+  return rotatedPosition;
+
+}
+
+// ================================================================================================
+// Map the position based on the calibration matrix
+// ================================================================================================
+XPT2046::Point XPT2046::_calibratePosition(XPT2046::Point position) {
+
+  // Calculated mapped X and Y position
+  int16_t x = _calibration.A * position.x + _calibration.B * position.y + _calibration.C;
+  int16_t y = _calibration.D * position.y + _calibration.E * position.y + _calibration.F;
+
+  // Prevent underflow
+  if (x < 0) { x = 0; }
+  if (y < 0) { y = 0; }
+
+  // Prevent overflow
+  if (x > _calibration.width)  { x = _calibration.width;  }
+  if (y > _calibration.height) { y = _calibration.height; }
+
+  // Return mapped positon
+  return {x, y};  
+
+}
+
+// ================================================================================================
+// Return the touch status
+// ================================================================================================
+bool XPT2046::_touched() {
 
   // If the IRQ pin is low, a touch event is occurring
   if (digitalRead(_irqPin) == LOW) {
@@ -226,24 +267,5 @@ bool XPT2046::touched() {
 
   // If no touch event return false
   return false;
-
-}
-
-// ================================================================================================
-// Return touch position
-// ================================================================================================
-XPT2046::Point XPT2046::getTouchPosition() {
-
-  // Read the touch position
-  Point position = readTouchPosition(_samples, _csPin, _spi);
-
-  // Rotate the position
-  position = rotatePosition(position, _rotation);
-
-  // If the calibration matrix is set, map the position
-  if (_calibrated) { position = mapPosition(position, _calibration); }
-
-  // Return the position
-  return position;
 
 }
