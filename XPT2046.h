@@ -1,3 +1,6 @@
+#ifndef _XPT2046_H
+#define _XPT2046_H
+
 #include "Arduino.h"
 #include "SPI.h"
 
@@ -65,3 +68,5 @@ class XPT2046 {
     bool     _touched();                         // Return the touch status and resets the released flag
 
 };
+
+#endif
