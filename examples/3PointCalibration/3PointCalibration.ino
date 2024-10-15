@@ -104,6 +104,9 @@ void setup() {
   // Set the touchscreen rotation
   touchscreen.setRotation(DISPLAY_ROTATION);
 
+  // Set the debounce timeout to a fairly high value to negate erroneous double touch events
+  touchscreen.setDebounceTimeout(250);
+
   // Initialize the display
   display.begin();
 
@@ -147,11 +150,8 @@ void loop() {
       // If current target is in the list of targets
       if (target < sizeof(targets) / sizeof(targets[0])) {
 
-        // If the touchscreen is being touched
-        if (touchscreen.touched() && released) {
-          
-          // Set the touchscreen released flag to false
-          released = false;
+        // If the touchscreen is being touched and the previous touch event has been released
+        if (touchscreen.touched() && touchscreen.released()) {
           
           // Get the touch position
           XPT2046::Point position = touchscreen.getTouchPosition();
@@ -171,17 +171,6 @@ void loop() {
 
           }
 
-        }
-
-        // If touchscreen is not touched and released is still false
-        if (!touchscreen.touched() && !released) { 
-          
-          // Reset the released flag to true
-          released = true;
-          
-          // Add a debounce delay
-          delay(100); 
-          
         }
       
       // If current target number is not in the list of targets
@@ -209,6 +198,9 @@ void loop() {
 
       // Set the touchscreen calibration to the calculated matrix
       touchscreen.setCalibration(calibration);
+
+      // Rest debounce timeout to make the touchscreen more responsive
+      touchscreen.setDebounceTimeout(0);
 
       // Set the calibration flag to true
       calibrated = true;

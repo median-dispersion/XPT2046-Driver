@@ -1,8 +1,9 @@
 #include "XPT2046.h"
 
 // Default initialization values
-#define DEFAULT_SAMPLE_COUNT 20
-#define DEFAUTL_ROTATION     0
+#define DEFAULT_SAMPLE_COUNT     20
+#define DEFAUTL_ROTATION         0
+#define DEFAULT_DEBOUNCE_TIMEOUT 10
 
 // Command bytes for the XPT2046
 #define POSITION_X  0xD1
@@ -23,12 +24,16 @@
 // ================================================================================================
 XPT2046::XPT2046(uint8_t csPin, uint8_t irqPin):
 
+  // Set private members to their default states
   _csPin(csPin),
   _irqPin(irqPin),
   _spi(&SPI),
   _sampleCount(DEFAULT_SAMPLE_COUNT),
   _rotation(DEFAUTL_ROTATION),
-  _calibrated(false)
+  _calibrated(false),
+  _debounceTimeoutMilliseconds(DEFAULT_DEBOUNCE_TIMEOUT),
+  _lastTouchMilliseconds(0),
+  _released(true)
 
 {}
 
@@ -71,7 +76,7 @@ void XPT2046::setRotation(uint8_t rotation) {
 // ================================================================================================
 // Set the calibration matrix
 // ================================================================================================
-void  XPT2046::setCalibration(Calibration calibration) {
+void XPT2046::setCalibration(Calibration calibration) {
 
   _calibration = calibration;
 
@@ -81,11 +86,63 @@ void  XPT2046::setCalibration(Calibration calibration) {
 }
 
 // ================================================================================================
+// Set the debounce timeout in milliseconds
+// ================================================================================================
+void XPT2046::setDebounceTimeout(uint16_t timeoutMilliseconds) {
+
+  _debounceTimeoutMilliseconds = timeoutMilliseconds;
+
+}
+
+// ================================================================================================
 // Returns if the touchscreen is being touched
 // ================================================================================================
 bool XPT2046::touched() {
 
-  return _touched();
+  // If the debounce timeout has passed
+  if (millis() - _lastTouchMilliseconds >= _debounceTimeoutMilliseconds) {
+
+    // Check if touch event is occurring
+    if (_touched()) {
+
+      // Update the last touch time
+      _lastTouchMilliseconds = millis();
+
+      // Return true
+      return true;
+
+    }
+
+  }
+
+  // If no touch event or still in debounce timeout, return false
+  return false;
+
+}
+
+// ================================================================================================
+// Returns if a touch event has been released
+// ================================================================================================
+bool XPT2046::released() {
+
+  // Get the current touch status
+  // This will also reset the released flag if no touch is occurring
+  bool touched = _touched();
+
+  // If currently touching but the released flag still true
+  // Meaning this is the initial touch event
+  if (touched && _released) {
+
+    // Set released to false for subsequent tests
+    _released = false;
+
+    // But return true because this is the initial touch event
+    return true;
+
+  }
+
+  // If it is a subsequent touch event, simply return the released flag
+  return _released;
 
 }
 
@@ -264,6 +321,9 @@ bool XPT2046::_touched() {
     return true;
 
   }
+
+  // Always reset the released flag if not touch event is captured
+  _released = true;
 
   // If no touch event return false
   return false;

@@ -109,6 +109,12 @@ void setup() {
   // To get the calibration matrix, use the sketch: Examples > XPT2046 Driver > 3PointCalibration
   touchscreen.setCalibration(CALIBRATION);
 
+  // Set the debounce timeout (optional, default = 10, time = milliseconds)
+  // This can help mitigate erroneous double touch events when touching or lifting from the touch area
+  // Keep in mind that this is a TIMEOUT meaning if set to 1000 ms only after waiting for 1 second another touch event is registered
+  // For something like a touch paint program this value should be as low as possible or even set to 0
+  touchscreen.setDebounceTimeout(10);
+
   // Initialize the display
   display.begin();
 
@@ -138,6 +144,12 @@ void loop() {
 
   // If the touchscreen is being touched
   if (touchscreen.touched()) {
+
+    // An alternative test case could be:
+    // (touchscreen.touched() && touchscreen.released()) or (touchscreen.released() && touchscreen.touched())
+    // This would check if the touchscreen is currently being touched
+    // But only continue if the previous touch event was released, i.e., the pen was lifted from the touchscreen
+    // This can be useful for single button presses
 
     // Get the touch position
     XPT2046::Point position = touchscreen.getTouchPosition();

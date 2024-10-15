@@ -49,6 +49,12 @@ void setup() {
   // 0 = 0°, 1 = 90°, 2 = 180°, 3 = 270°
   touch.setRotation(0);
 
+  // Set the debounce timeout (optional, default = 10, time = milliseconds)
+  // This can help mitigate erroneous double touch events when touching or lifting from the touch area
+  // Keep in mind that this is a TIMEOUT meaning if set to 1000 ms only after waiting for 1 second another touch event is registered
+  // For something like a touch paint program this value should be as low as possible or even set to 0
+  touch.setDebounceTimeout(10);
+
 }
 
 // ================================================================================================
