@@ -6,15 +6,20 @@
 #define DEFAULT_DEBOUNCE_TIMEOUT 10
 
 // Command bytes for the XPT2046
-#define POSITION_X  0xD1
-#define POSITION_Y  0x91
-#define POSITION_Z1 0xB1
-#define POSITION_Z2 0xC1
-#define READ_VALUE  0x00
-#define POWER_DOWN  0x80
+#define POSITION_X  0xD0 // 1 101 0 0 00
+#define POSITION_Y  0x90 // 1 001 0 0 00
+#define POSITION_Z1 0xB0 // 1 011 0 0 00
+#define POSITION_Z2 0xC0 // 1 100 0 0 00
+#define READ_VALUE  0x00 // 0 000 0 0 00
+#define POWER_DOWN  0x80 // 1 000 0 0 00
 
 // SPI settings
 #define SPI_SETTINGS SPISettings(2000000, MSBFIRST, SPI_MODE0)
+
+// Touchscreen dead zone
+// The raw minimum and maximum values of the touch area are around 200 and 3900
+// So a dead zone disregarding all samples below 50 should be safe
+#define DEAD_ZONE 50
 
 //-------------------------------------------------------------------------------------------------
 // XPT2046 Public
@@ -190,21 +195,41 @@ uint16_t XPT2046::_readValue(uint8_t command) {
 // ================================================================================================
 XPT2046::Point XPT2046::_averageSamples(XPT2046::Point *samples) {
 
-  // TODO
-  // This is the most basic averaging approach
-  // A more complex algorithm that removes outliers should be used
-
   float x = 0.0;
   float y = 0.0;
+  uint8_t validSamples = 0;
 
+  // For all samples
   for (uint8_t sample = 0; sample < _sampleCount; sample++) {
 
-    x += samples[sample].x;
-    y += samples[sample].y;
+    // Check if sample is outside of dead zone meaning it is a valid sample
+    if (samples[sample].x >= DEAD_ZONE && samples[sample].y >= DEAD_ZONE) {
+
+      // Add the X and Y position to the sum of X and Y positions
+      x += samples[sample].x;
+      y += samples[sample].y;
+
+      // Increase the number of valid samples
+      validSamples++;
+
+    }
 
   }
 
-  return {x / _sampleCount, y / _sampleCount};
+  // If there were any valid samples
+  if (validSamples) {
+
+    // Average by the number of valid samples
+    return {x / validSamples, y / validSamples};
+
+  // If there were no valid samples
+  // i.e., the touch was released before any samples were taken
+  } else {
+
+    // Return a touch position outside the maximum range
+    return {UINT16_MAX, UINT16_MAX};
+
+  }
 
 }
 
@@ -220,20 +245,25 @@ XPT2046::Point XPT2046::_readTouchPosition() {
   digitalWrite(_csPin, LOW);
 
   // Create an array of samples
-  XPT2046::Point samples[_sampleCount];
+  XPT2046::Point samples[_sampleCount] = {};
 
   // For the number of specified samples
   for (uint8_t sample = 0; sample < _sampleCount; sample++) {
 
-    // Request the touch X and Y position from XPT2046 via SPI
-    // Store the result in the sample array
-    samples[sample].x = _readValue(POSITION_X);
-    samples[sample].y = _readValue(POSITION_Y);
+    // Only add the sample if touch event is still occurring
+    if (_touched()) {
+
+      // Request the touch X and Y position from XPT2046 via SPI
+      // Store the result in the sample array
+      samples[sample].x = _readValue(POSITION_X);
+      samples[sample].y = _readValue(POSITION_Y);
+
+    }
 
   }
 
-  // Send a power down command to the XPT2046
-  _spi->transfer(POWER_DOWN);
+  // Send a power down command to the XPT2046 using the _readValue function
+  _readValue(POWER_DOWN);
 
   // Deselect the XPT2046
   digitalWrite(_csPin, HIGH);
