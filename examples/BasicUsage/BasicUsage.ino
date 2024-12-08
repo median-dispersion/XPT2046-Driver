@@ -2,11 +2,16 @@
 
   This is the most basic way of using the XPT2046 Driver library.
   The library is initialized and then checks if a touch event occurred.
-  If a touch event is captured, the touch position is printed to the Serial console.
+  If a touch event is captured, the touch position is printed to the Serial Monitor.
   The X and Y positions are a 12-Bit integer between 0 and 4095.
   For X and Y coordinates that are mapped to the pixel grid of a display, please look at:
   Examples > XPT2046 Driver > TouchscreenUsage
   Examples > XPT2046 Driver > 3PointCalibration
+
+  Usage:
+  1. Change the User configuration (#define) to your needs
+  2. Compile and upload the sketch
+  3. Touch the touch area
 
   Median Dispersion 2024
   https://github.com/median-dispersion/XPT2046-Driver
@@ -52,7 +57,7 @@ void setup() {
   // Set the debounce timeout (optional, default = 10, time = milliseconds)
   // This can help mitigate erroneous double touch events when touching or lifting from the touch area
   // Keep in mind that this is a TIMEOUT meaning if set to 1000 ms only after waiting for 1 second another touch event is registered
-  // For something like a touch paint program this value should be as low as possible or even set to 0
+  // For something like a paint program, this value should be as low as possible, or even set to 0
   touch.setDebounceTimeout(10);
 
 }
