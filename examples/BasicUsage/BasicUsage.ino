@@ -13,7 +13,7 @@
   2. Compile and upload the sketch
   3. Touch the touch area
 
-  Median Dispersion 2024
+  Median Dispersion 2025
   https://github.com/median-dispersion/XPT2046-Driver
 
 */
@@ -45,20 +45,9 @@ void setup() {
   // Initialize
   touch.begin();
 
-  // The number of samples to average over before returning the touch position (optional, default = 20, range = 1-255)
-  // A higher number of samples will result in a more consistent touch position
-  // But as a consequence will take a longer time to process
-  touch.setSampleCount(20);
-
   // Set the rotation (optional, default = 0, values = 0, 1, 2, 3)
   // 0 = 0°, 1 = 90°, 2 = 180°, 3 = 270°
   touch.setRotation(0);
-
-  // Set the debounce timeout (optional, default = 10, time = milliseconds)
-  // This can help mitigate erroneous double touch events when touching or lifting from the touch area
-  // Keep in mind that this is a TIMEOUT meaning if set to 1000 ms only after waiting for 1 second another touch event is registered
-  // For something like a paint program, this value should be as low as possible, or even set to 0
-  touch.setDebounceTimeout(10);
 
 }
 
@@ -67,16 +56,23 @@ void setup() {
 // ================================================================================================
 void loop() {
 
-  // Check if touch event is occurring
+  // Check if touch area is being touched
   if (touch.touched()) {
 
     // Get the touch position
     XPT2046::Point position = touch.getTouchPosition();
+    
+    // Check if the touch position is valid
+    // The touch position can become invalid if the touch event was lifted before or during the sampling process
+    // This will result in a value of 65535 for both X and Y, indicating that position is invalid
+    if (touch.valid(position)) {
 
-    // Print the position to the serial console
-    // The position is a 12-Bit integer between 0 and 4096
-    // For X and Y coordinates that are mapped to the pixel grid of a display, please look at the other examples
-    Serial.println("X: " + String(position.x) + ", Y: " + String(position.y));
+      // Print the position to the Serial Monitor
+      // The position is a 12-Bit integer between 0 and 4096
+      // For X and Y coordinates that are mapped to the pixel grid of a display, please look at the other examples
+      Serial.println("X: " + String(position.x) + ", Y: " + String(position.y));
+
+    }
 
   }
 

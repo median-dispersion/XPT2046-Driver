@@ -1,25 +1,29 @@
+// https://github.com/median-dispersion/XPT2046-Driver
+
 #include "XPT2046.h"
 
 // Default initialization values
-#define DEFAULT_SAMPLE_COUNT     20
 #define DEFAUTL_ROTATION         0
-#define DEFAULT_DEBOUNCE_TIMEOUT 10
+#define DEFAULT_SAMPLE_COUNT     20
+#define DEFAULT_DEBOUNCE_TIMEOUT 100
+#define DEFAULT_TOUCH_PRESSURE   3.5
+#define DEFAULT_DEAD_ZONE        50
+#define DEFAULT_POWER_DOWN       true
 
-// Command bytes for the XPT2046
-#define POSITION_X  0xD0 // 1 101 0 0 00
-#define POSITION_Y  0x90 // 1 001 0 0 00
-#define POSITION_Z1 0xB0 // 1 011 0 0 00
-#define POSITION_Z2 0xC0 // 1 100 0 0 00
-#define READ_VALUE  0x00 // 0 000 0 0 00
-#define POWER_DOWN  0x80 // 1 000 0 0 00
+// Command bits for the XPT2046
+// See datasheet for bit values
+#define XPT2046_POSITION_X  0b11010000
+#define XPT2046_POSITION_Y  0b10010000
+#define XPT2046_POSITION_Z1 0b10110000
+#define XPT2046_POSITION_Z2 0b11000000
+#define XPT2046_READ_VALUE  0b00000000
+#define XPT2046_POWER_DOWN  0b10000000
 
 // SPI settings
 #define SPI_SETTINGS SPISettings(2000000, MSBFIRST, SPI_MODE0)
 
-// Touchscreen dead zone
-// The raw minimum and maximum values of the touch area are around 200 and 3900
-// So a dead zone disregarding all samples below 50 should be safe
-#define DEAD_ZONE 50
+// Maximum value of a 12-bit unsigned integer
+#define UINT12_MAX 4095
 
 //-------------------------------------------------------------------------------------------------
 // XPT2046 Public
@@ -32,13 +36,18 @@ XPT2046::XPT2046(uint8_t csPin, uint8_t irqPin):
   // Set private members to their default states
   _csPin(csPin),
   _irqPin(irqPin),
-  _spi(&SPI),
-  _sampleCount(DEFAULT_SAMPLE_COUNT),
   _rotation(DEFAUTL_ROTATION),
   _calibrated(false),
+  _sampleCount(DEFAULT_SAMPLE_COUNT),
   _debounceTimeoutMilliseconds(DEFAULT_DEBOUNCE_TIMEOUT),
   _lastTouchMilliseconds(0),
-  _released(true)
+  _touchPressure(DEFAULT_TOUCH_PRESSURE),
+  _deadZone(DEFAULT_DEAD_ZONE),
+  _powerDown(DEFAULT_POWER_DOWN),
+  _touched(false),
+  _released(true),
+  _updated(false),
+  _transferEnabled(false)
 
 {}
 
@@ -52,20 +61,11 @@ void XPT2046::begin() {
   pinMode(_irqPin, INPUT);
 
   // SPI begin
-  _spi->begin();
+  SPI.begin();
 
   // Deselect the XPT2046 by setting chip select pin to HIGH
   // LOW = selected, HIGH = unselected
   digitalWrite(_csPin, HIGH);
-
-}
-
-// ================================================================================================
-// Set the number of samples to average over
-// ================================================================================================
-void XPT2046::setSampleCount(uint8_t samples) {
-
-  _sampleCount = samples;
 
 }
 
@@ -91,6 +91,15 @@ void XPT2046::setCalibration(Calibration calibration) {
 }
 
 // ================================================================================================
+// Set the number of samples to average over
+// ================================================================================================
+void XPT2046::setSampleCount(uint8_t samples) {
+
+  _sampleCount = samples;
+
+}
+
+// ================================================================================================
 // Set the debounce timeout in milliseconds
 // ================================================================================================
 void XPT2046::setDebounceTimeout(uint16_t timeoutMilliseconds) {
@@ -100,28 +109,45 @@ void XPT2046::setDebounceTimeout(uint16_t timeoutMilliseconds) {
 }
 
 // ================================================================================================
+// Set the touch pressure
+// ================================================================================================
+void XPT2046::setTouchPressure(float pressure) {
+
+  _touchPressure = pressure;
+
+}
+
+// ================================================================================================
+// Set the touch area dead zone
+// ================================================================================================
+void XPT2046::setDeadZone(uint16_t deadZone) {
+
+  _deadZone = deadZone;
+
+}
+
+// ================================================================================================
+// Set power-down state after SPI transaction
+// ================================================================================================
+void XPT2046::setPowerDown(bool status) {
+
+  _powerDown = status;
+
+}
+
+// ================================================================================================
 // Returns if the touchscreen is being touched
 // ================================================================================================
 bool XPT2046::touched() {
 
-  // If the debounce timeout has passed
-  if (millis() - _lastTouchMilliseconds >= _debounceTimeoutMilliseconds) {
+  // Always update touch status, i.e., the _touched and _released flags
+  _updateTouchStatus();
 
-    // Check if touch event is occurring
-    if (_touched()) {
+  // Set the update flag to true
+  _updated = true;
 
-      // Update the last touch time
-      _lastTouchMilliseconds = millis();
-
-      // Return true
-      return true;
-
-    }
-
-  }
-
-  // If no touch event or still in debounce timeout, return false
-  return false;
+  // Return touch status
+  return _touched;
 
 }
 
@@ -130,23 +156,21 @@ bool XPT2046::touched() {
 // ================================================================================================
 bool XPT2046::released() {
 
-  // Get the current touch status
-  // This will also reset the released flag if no touch is occurring
-  bool touched = _touched();
+  // Check if touch status was previously updated
+  if(!_updated) { 
+    
+    // If not, update touch status
+    _updateTouchStatus();
+  
+  // If it was previously updated
+  } else {
 
-  // If currently touching but the released flag still true
-  // Meaning this is the initial touch event
-  if (touched && _released) {
-
-    // Set released to false for subsequent tests
-    _released = false;
-
-    // But return true because this is the initial touch event
-    return true;
+    // Reset the update status
+    _updated = false;
 
   }
 
-  // If it is a subsequent touch event, simply return the released flag
+  // Return the release status
   return _released;
 
 }
@@ -156,17 +180,55 @@ bool XPT2046::released() {
 // ================================================================================================
 XPT2046::Point XPT2046::getTouchPosition() {
 
-  // Read the touch position
-  Point position = _readTouchPosition();
+  // Touch position
+  XPT2046::Point position;
 
-  // Rotate the position
-  position = _rotatePosition(position);
+  // Read the touch position via SPI
+  position = _readTouchPosition();
 
-  // If the calibration matrix is set, map the position
-  if (_calibrated) { position = _calibratePosition(position); }
+  // If it is a valid raw touch position, i.e., touch position not outside touch bounds
+  if (valid(position)) {
 
-  // Return the position
+    // Rotate raw touch position
+    position = _rotateTouchPosition(position);
+
+    // If calibration is set
+    if (_calibrated) {
+
+      // Map the touch position to the display pixel grid
+      position = _mapTouchPosition(position);
+
+      // Rotate the mapped position
+      position = _rotateMappedPosition(position);
+
+    }
+
+  }
+
+  // Return touch position
   return position;
+
+}
+
+// ================================================================================================
+// Check if a given positon is a valid touch position
+// ================================================================================================
+bool XPT2046::valid(XPT2046::Point position) {
+
+  // In the case that a touch event was lifted after touched() was checked and before the first sample was taken, the touch position will become invalid
+  // The getTouchPosition() function will return a position with X and Y at the maximum values for an unsigned 16-bit integer
+  // This function will check if a touch position is invalid
+
+  // Check if position is not outside the touch bounds
+  if (position.x != UINT16_MAX && position.y != UINT16_MAX) {
+
+    // Return valid position
+    return true;
+
+  }
+
+  // Return invalid position
+  return false;
 
 }
 
@@ -174,60 +236,174 @@ XPT2046::Point XPT2046::getTouchPosition() {
 // XPT2046 Private
 
 // ================================================================================================
-// Read a value from the XPT2046 via SPI
+// Enable SPI data transfer
 // ================================================================================================
-uint16_t XPT2046::_readValue(uint8_t command) {
+bool XPT2046::_enableDataTransfer() {
 
-  // Send the command byte
-  _spi->transfer(command);
+  // If data transfer is disabled
+  if (!_transferEnabled) {
+
+    // Begin an SPI transaction
+    SPI.beginTransaction(SPI_SETTINGS);
+
+    // Select the XPT2046 via the chip select pin
+    digitalWrite(_csPin, LOW);
+
+    // Set the transfer flag to true
+    _transferEnabled = true;
+
+    // Return that data transfer was enabled
+    return true;
+
+  // If data transfer was already enabled
+  } else {
+
+    // Return that data transfer was not enabled
+    return false;
+
+  }
+
+}
+
+// ================================================================================================
+// Disable SPI data transfer
+// ================================================================================================
+bool XPT2046::_disableDataTransfer() {
+
+  // If data transfer is enabled
+  if (_transferEnabled) {
+
+    // If power-down is enabled
+    if (_powerDown) {
+
+      // Send a power-down command to the XPT2046
+      SPI.transfer(XPT2046_POWER_DOWN);
+
+    }
+
+    // Deselect the XPT2046
+    digitalWrite(_csPin, HIGH);
+
+    // End the SPI transaction
+    SPI.endTransaction();
+
+    // Set the transfer flag to false
+    _transferEnabled = false;
+
+    // Return that data transfer was disabled
+    return true;
+
+  } else {
+
+    // Return that data transfer was not disabled
+    return false;
+
+  }
+
+}
+
+// ================================================================================================
+// Read data via SPI
+// ================================================================================================
+uint16_t XPT2046::_readData(uint8_t data) {
+
+  // Send the command bits
+  SPI.transfer(data);
 
   // Read the upper and lower bits of the response
-  uint8_t upperBits = _spi->transfer(READ_VALUE);
-  uint8_t lowerBits = _spi->transfer(READ_VALUE);
+  uint8_t upperBits = SPI.transfer(XPT2046_READ_VALUE);
+  uint8_t lowerBits = SPI.transfer(XPT2046_READ_VALUE);
 
   // Combine the two parts into a 12-bit value
+  // In reality, the XPT2046 seems to return a 13-Bit value where the first bit is a junk bit always set to 0
+  // That is why the bit shift operation is the way it is. If there is no junk bit, the bit shift would be:
+  // return (upperBits << 4) | (lowerBits >> 4);
   return (upperBits << 5) | (lowerBits >> 3);
 
 }
 
 // ================================================================================================
-// Average samples
+// Return the touch status
 // ================================================================================================
-XPT2046::Point XPT2046::_averageSamples(XPT2046::Point *samples) {
+bool XPT2046::_getTouchStatus() {
 
-  float x = 0.0;
-  float y = 0.0;
-  uint8_t validSamples = 0;
+  // If the IRQ pin is low, a touch event is occurring
+  if (digitalRead(_irqPin) == LOW) {
 
-  // For all samples
-  for (uint8_t sample = 0; sample < _sampleCount; sample++) {
+    // Enable SPI data transfer
+    bool enabled = _enableDataTransfer();
 
-    // Check if sample is outside of dead zone meaning it is a valid sample
-    if (samples[sample].x >= DEAD_ZONE && samples[sample].y >= DEAD_ZONE) {
+    // Read X, Z1 and Z2 values
+    float x  = _readData(XPT2046_POSITION_X);
+    float z1 = _readData(XPT2046_POSITION_Z1);
+    float z2 = _readData(XPT2046_POSITION_Z2);
 
-      // Add the X and Y position to the sum of X and Y positions
-      x += samples[sample].x;
-      y += samples[sample].y;
+    // If data transfer was enabled, disable SPI data transfer
+    if (enabled) { _disableDataTransfer(); }
 
-      // Increase the number of valid samples
-      validSamples++;
+    // Calculate approximate pressure
+    // This formula results in values that decreases with pressure
+    // This value is not very accurate or stable, but good enough to judge if the pressure for a proper touchdown has been reached
+    float pressure = (x / UINT12_MAX) * ((z2 / z1) - 1.0);
+
+    // If the touch pressure threshold has been reached
+    if (pressure <= _touchPressure) {
+      
+      // Return true
+      return true;
 
     }
 
   }
 
-  // If there were any valid samples
-  if (validSamples) {
+  // If no touch event return false
+  return false;
 
-    // Average by the number of valid samples
-    return {x / validSamples, y / validSamples};
+}
 
-  // If there were no valid samples
-  // i.e., the touch was released before any samples were taken
-  } else {
+// ================================================================================================
+// Update the touched and released flags
+// ================================================================================================
+void XPT2046::_updateTouchStatus() {
 
-    // Return a touch position outside the maximum range
-    return {UINT16_MAX, UINT16_MAX};
+  // Check if the debounce timeout has passed
+  if (millis() - _lastTouchMilliseconds >= _debounceTimeoutMilliseconds) {
+
+    // Get the current touch status
+    bool touched = _getTouchStatus();
+
+    // If currently touching and touch flag was already set to true
+    // Meaning this is the second pass over this check
+    if (touched && _touched) {
+
+      // Set the released flag to false
+      _released = false;
+
+    }
+
+    // If currently touching and touched flag has not been set
+    // Meaning this is the first pass over this check
+    if (touched && !_touched) {
+
+      // Set the touched flag to true
+      _touched = true;
+
+    }
+
+    // If not touching and touched flag is still set
+    // Meaning the touch event was released
+    if (!touched && _touched) {
+      
+      // Reset touched flag
+      _touched = false;
+
+      // Reset released flag
+      _released = true;
+
+      // Start debounce timeout
+      _lastTouchMilliseconds = millis();
+
+    }
 
   }
 
@@ -238,67 +414,121 @@ XPT2046::Point XPT2046::_averageSamples(XPT2046::Point *samples) {
 // ================================================================================================
 XPT2046::Point XPT2046::_readTouchPosition() {
 
-  // Begin an SPI transaction
-  _spi->beginTransaction(SPI_SETTINGS);
-
-  // Select the XPT2046 via the chip select pin
-  digitalWrite(_csPin, LOW);
-
   // Create an array of samples
   XPT2046::Point samples[_sampleCount] = {};
+
+  // Enable SPI data transfer
+  bool enabled = _enableDataTransfer();
 
   // For the number of specified samples
   for (uint8_t sample = 0; sample < _sampleCount; sample++) {
 
-    // Only add the sample if touch event is still occurring
-    if (_touched()) {
+    // Check if still touching
+    if (_getTouchStatus()) {
 
-      // Request the touch X and Y position from XPT2046 via SPI
-      // Store the result in the sample array
-      samples[sample].x = _readValue(POSITION_X);
-      samples[sample].y = _readValue(POSITION_Y);
+      // Read X and Y positions and store them in the sample array
+      samples[sample].x = _readData(XPT2046_POSITION_X);
+      samples[sample].y = _readData(XPT2046_POSITION_Y);
 
     }
 
   }
 
-  // Send a power down command to the XPT2046 using the _readValue function
-  _readValue(POWER_DOWN);
+  // If data transfer was enabled, disable SPI data transfer
+  if (enabled) { _disableDataTransfer(); }
 
-  // Deselect the XPT2046
-  digitalWrite(_csPin, HIGH);
+  // Average the samples
+  XPT2046::Point position = _averageTouchSamples(samples);
 
-  // End the SPI transaction
-  _spi->endTransaction();
-
-  // Average the samples return the resulting position
-  return _averageSamples(samples);
+  // Return touch position
+  return position;
 
 }
 
 // ================================================================================================
-// Rotate a position
+// Average touch samples
 // ================================================================================================
-XPT2046::Point XPT2046::_rotatePosition(XPT2046::Point position) {
+XPT2046::Point XPT2046::_averageTouchSamples(XPT2046::Point *samples) {
 
+  // A standard deviation averaging approach was previously tested
+  // But it seemed like it had no effect on touch position stability
+
+  // Create a point outside the touch bounds
+  // If no valid samples were taken, this will result in a position outside the touch bounds
+  // It can then be used to reject a touch position
+  XPT2046::Point position = {UINT16_MAX, UINT16_MAX};
+
+  // Number of samples in the valid touch area
+  uint8_t validSamples = 0;
+
+  // Sum of valid X and Y positions
+  uint32_t sumX = 0;
+  uint32_t sumY = 0;
+
+  // For every sample
+  for (uint8_t sample = 0; sample < _sampleCount; sample++) {
+
+    // Check if the sample is inside the valid touch area
+    // i.e. if sample is outside of dead zone
+    if (samples[sample].x > _deadZone && samples[sample].x < UINT12_MAX - _deadZone && samples[sample].y > _deadZone && samples[sample].y < UINT12_MAX - _deadZone) {
+
+      // Add sample component to corresponding sum
+      sumX += samples[sample].x;
+      sumY += samples[sample].y;
+
+      // Increase the number of valid samples
+      validSamples++;
+
+    }
+
+  }
+
+  // If there are any valid samples
+  if (validSamples) {
+
+    // Average valid X and Y positions
+    position.x = sumX / validSamples;
+    position.y = sumY / validSamples;
+
+  }
+
+  // Return an averaged position
+  // Or if no valid samples, a position outside the touch bounds
+  return position;
+
+}
+
+// ================================================================================================
+// Rotate the raw touch position
+// ================================================================================================
+XPT2046::Point XPT2046::_rotateTouchPosition(XPT2046::Point position) {
+
+  // Set local rotation variable
+  uint8_t rotation = _rotation;
+
+  // If calibration is set, use the calibration rotation instead by overwriting the local rotation
+  // The mapped position will then be rotated in a later step according to the rotation that was applied during calibration
+  if (_calibrated) { rotation = _calibration.rotation; }
+
+  // Rotated position
   XPT2046::Point rotatedPosition;
 
   // Depending on the selected rotation, rotate the X and Y coordinates
   // These rotation values will give the same result as rotating an ILI9341 TFT screen with the Adafruit ILI9341 library
-  switch (_rotation) {
+  switch (rotation) {
 
     case 0: // 0°
       rotatedPosition.x = position.x;
-      rotatedPosition.y = 4095 - position.y;
+      rotatedPosition.y = UINT12_MAX - position.y;
     break;
 
     case 1: // 90°
-      rotatedPosition.x = 4095 - position.y;
-      rotatedPosition.y = 4095 - position.x;
+      rotatedPosition.x = UINT12_MAX - position.y;
+      rotatedPosition.y = UINT12_MAX - position.x;
     break;
 
     case 2: // 180°
-      rotatedPosition.x = 4095 - position.x;
+      rotatedPosition.x = UINT12_MAX - position.x;
       rotatedPosition.y = position.y;
     break;
 
@@ -317,11 +547,11 @@ XPT2046::Point XPT2046::_rotatePosition(XPT2046::Point position) {
 // ================================================================================================
 // Map the position based on the calibration matrix
 // ================================================================================================
-XPT2046::Point XPT2046::_calibratePosition(XPT2046::Point position) {
+XPT2046::Point XPT2046::_mapTouchPosition(XPT2046::Point position) {
 
   // Calculated mapped X and Y position
   int16_t x = _calibration.A * position.x + _calibration.B * position.y + _calibration.C;
-  int16_t y = _calibration.D * position.y + _calibration.E * position.y + _calibration.F;
+  int16_t y = _calibration.D * position.x + _calibration.E * position.y + _calibration.F;
 
   // Prevent underflow
   if (x < 0) { x = 0; }
@@ -332,30 +562,64 @@ XPT2046::Point XPT2046::_calibratePosition(XPT2046::Point position) {
   if (y > _calibration.height) { y = _calibration.height; }
 
   // Return mapped positon
-  return {x, y};  
+  return {x, y};
 
 }
 
 // ================================================================================================
-// Return the touch status
+// Rotate the mapped position
 // ================================================================================================
-bool XPT2046::_touched() {
+XPT2046::Point XPT2046::_rotateMappedPosition(XPT2046::Point position) {
 
-  // If the IRQ pin is low, a touch event is occurring
-  if (digitalRead(_irqPin) == LOW) {
+  // Rotated position
+  XPT2046::Point rotatedPosition = position;
 
-    // TODO
-    // Add a check for a pressure threshold using the Z1 and Z2 values
+  // If the calibration rotation is not the same as the set rotation
+  if (_calibration.rotation != _rotation) {
 
-    // Return true
-    return true;
+    // Set "virtual" rotation depending on permutation of the currently set rotation and the rotation that was applied during matrix calculation
+    uint8_t rotation = (_calibration.rotation + _rotation + ((_calibration.rotation % 2) * 2)) % 4;
+
+    // Set width and height variables
+    uint16_t width  = _calibration.width;
+    uint16_t height = _calibration.height;
+
+    // Swap width and height if necessary
+    if ((_calibration.rotation % 2) != (_rotation % 2)) {
+
+      width  = _calibration.height;
+      height = _calibration.width;
+
+    }
+    
+    // Apply rotation
+    switch (rotation) {
+
+      case 0: // 0°
+        rotatedPosition.x = position.x;
+        rotatedPosition.y = position.y;
+      break;
+
+      case 1: // 90°
+        rotatedPosition.x = position.y;
+        rotatedPosition.y = height - position.x;
+      break;
+
+      case 2: // 180°
+        rotatedPosition.x = width - position.x;
+        rotatedPosition.y = height - position.y;
+      break;
+
+      case 3: // 270°
+        rotatedPosition.x = width - position.y;
+        rotatedPosition.y = position.x;
+      break;
+
+    }
 
   }
 
-  // Always reset the released flag if not touch event is captured
-  _released = true;
-
-  // If no touch event return false
-  return false;
+  // Return rotated position
+  return rotatedPosition;
 
 }
