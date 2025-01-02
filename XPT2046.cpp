@@ -562,7 +562,7 @@ XPT2046::Point XPT2046::_mapTouchPosition(XPT2046::Point position) {
   if (y > _calibration.height) { y = _calibration.height; }
 
   // Return mapped positon
-  return {x, y};
+  return {(uint16_t)(x), (uint16_t)(y)};
 
 }
 

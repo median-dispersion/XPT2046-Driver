@@ -19,6 +19,7 @@
 
 */
 
+#include "Arduino.h"
 #include "XPT2046.h"
 #include "Adafruit_GFX.h"
 #include "Adafruit_ILI9341.h"
@@ -66,6 +67,16 @@ XPT2046 touchscreen(TOUCH_CS_PIN, TOUCH_IRQ_PIN);
 
 // Create frame buffer object
 GFXcanvas16 canvas(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+
+//-------------------------------------------------------------------------------------------------
+// Function prototypes
+
+void calibrateTouchscreen();
+void measureTouchTargets(XPT2046::Point *targets, XPT2046::Point (&measurements)[3]);
+void drawTouchTarget(XPT2046::Point position);
+void calculateCalibrationMatrix(XPT2046::Point *targets, XPT2046::Point *measurements, XPT2046::Calibration &calibration);
+void printCalibrationMatrix(XPT2046::Calibration calibration);
+void drawTouchPosition(XPT2046::Point position);
 
 // ================================================================================================
 // Setup
@@ -149,9 +160,9 @@ void calibrateTouchscreen() {
   // Array of touch targets
   XPT2046::Point targets[3] = {
 
-    {DISPLAY_WIDTH * 0.43, DISPLAY_HEIGHT * 0.05},
-    {DISPLAY_WIDTH * 0.94, DISPLAY_HEIGHT * 0.54},
-    {DISPLAY_WIDTH * 0.04, DISPLAY_HEIGHT * 0.96}
+    {(uint16_t)(DISPLAY_WIDTH * 0.43), (uint16_t)(DISPLAY_HEIGHT * 0.05)},
+    {(uint16_t)(DISPLAY_WIDTH * 0.94), (uint16_t)(DISPLAY_HEIGHT * 0.54)},
+    {(uint16_t)(DISPLAY_WIDTH * 0.04), (uint16_t)(DISPLAY_HEIGHT * 0.96)}
 
   };
   

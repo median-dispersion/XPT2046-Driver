@@ -20,6 +20,7 @@
 
 */
 
+#include "Arduino.h"
 #include "XPT2046.h"
 #include "Adafruit_GFX.h"
 #include "Adafruit_ILI9341.h"
@@ -82,6 +83,35 @@ XPT2046 touchscreen(TOUCH_CS_PIN, TOUCH_IRQ_PIN);
 
 // Create frame buffer object
 GFXcanvas16 canvas(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+
+// ================================================================================================
+// Draw the touch position on screen
+// ================================================================================================
+void drawTouchPosition(XPT2046::Point position) {
+
+  // Create a position string
+  String positionString = "X: " + String(position.x) + "\n" +
+                          "Y: " + String(position.y);
+
+  // Clear the frame buffer
+  canvas.fillScreen(ILI9341_BLACK);
+
+  // Set the text color and cursor
+  canvas.setTextColor(ILI9341_WHITE);
+  canvas.setCursor(0, 0);
+
+  // Draw the position string to the frame buffer
+  canvas.print(positionString);
+
+  // Draw a crosshair at the touch position
+  canvas.drawLine(0, position.y, DISPLAY_WIDTH, position.y, ILI9341_RED);
+  canvas.drawLine(position.x, 0, position.x, DISPLAY_HEIGHT, ILI9341_RED);
+  canvas.drawCircle(position.x, position.y, 5, ILI9341_RED);
+
+  // Write frame buffer to the display
+  display.drawRGBBitmap(0, 0, canvas.getBuffer(), canvas.width(), canvas.height());
+
+}
 
 // ================================================================================================
 // Setup
@@ -185,34 +215,5 @@ void loop() {
     }
 
   }
-
-}
-
-// ================================================================================================
-// Draw the touch position on screen
-// ================================================================================================
-void drawTouchPosition(XPT2046::Point position) {
-
-  // Create a position string
-  String positionString = "X: " + String(position.x) + "\n" +
-                          "Y: " + String(position.y);
-
-  // Clear the frame buffer
-  canvas.fillScreen(ILI9341_BLACK);
-
-  // Set the text color and cursor
-  canvas.setTextColor(ILI9341_WHITE);
-  canvas.setCursor(0, 0);
-
-  // Draw the position string to the frame buffer
-  canvas.print(positionString);
-
-  // Draw a crosshair at the touch position
-  canvas.drawLine(0, position.y, DISPLAY_WIDTH, position.y, ILI9341_RED);
-  canvas.drawLine(position.x, 0, position.x, DISPLAY_HEIGHT, ILI9341_RED);
-  canvas.drawCircle(position.x, position.y, 5, ILI9341_RED);
-
-  // Write frame buffer to the display
-  display.drawRGBBitmap(0, 0, canvas.getBuffer(), canvas.width(), canvas.height());
 
 }
