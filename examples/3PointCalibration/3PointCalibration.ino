@@ -299,8 +299,24 @@ void drawTouchTarget(XPT2046::Point position) {
 // ================================================================================================
 void calculateCalibrationMatrix(XPT2046::Point *targets, XPT2046::Point *measurements, XPT2046::Calibration &calibration) {
 
+  // Explicitly cast targets into floats to prevent narrow conversion issues
+  float target0X = targets[0].x;
+  float target0Y = targets[0].y;
+  float target1X = targets[1].x;
+  float target1Y = targets[1].y;
+  float target2X = targets[2].x;
+  float target2Y = targets[2].y;
+
+  // Explicitly cast measurements into floats to prevent narrow conversion issues
+  float measurement0X = measurements[0].x;
+  float measurement0Y = measurements[0].y;
+  float measurement1X = measurements[1].x;
+  float measurement1Y = measurements[1].y;
+  float measurement2X = measurements[2].x;
+  float measurement2Y = measurements[2].y;
+
   // Calculate the determinant
-  double determinant = (measurements[0].x * (measurements[1].y - measurements[2].y) + measurements[1].x * (measurements[2].y - measurements[0].y) + measurements[2].x * (measurements[0].y - measurements[1].y));
+  double determinant = (measurement0X * (measurement1Y - measurement2Y) + measurement1X * (measurement2Y - measurement0Y) + measurement2X * (measurement0Y - measurement1Y));
 
   // Prevent division by 0
   if (determinant == 0) {
@@ -314,12 +330,12 @@ void calculateCalibrationMatrix(XPT2046::Point *targets, XPT2046::Point *measure
   }
 
   // Calculate the calibration matrix coefficients
-  calibration.A = ((targets[0].x * (measurements[1].y - measurements[2].y) + targets[1].x * (measurements[2].y - measurements[0].y) + targets[2].x * (measurements[0].y - measurements[1].y)) / determinant);
-  calibration.B = ((targets[0].x * (measurements[2].x - measurements[1].x) + targets[1].x * (measurements[0].x - measurements[2].x) + targets[2].x * (measurements[1].x - measurements[0].x)) / determinant);
-  calibration.C = ((targets[0].x * (measurements[1].x * measurements[2].y - measurements[2].x * measurements[1].y) + targets[1].x * (measurements[2].x * measurements[0].y - measurements[0].x * measurements[2].y) + targets[2].x * (measurements[0].x * measurements[1].y - measurements[1].x * measurements[0].y)) / determinant);
-  calibration.D = ((targets[0].y * (measurements[1].y - measurements[2].y) + targets[1].y * (measurements[2].y - measurements[0].y) + targets[2].y * (measurements[0].y - measurements[1].y)) / determinant);
-  calibration.E = ((targets[0].y * (measurements[2].x - measurements[1].x) + targets[1].y * (measurements[0].x - measurements[2].x) + targets[2].y * (measurements[1].x - measurements[0].x)) / determinant);
-  calibration.F = ((targets[0].y * (measurements[1].x * measurements[2].y - measurements[2].x * measurements[1].y) + targets[1].y * (measurements[2].x * measurements[0].y - measurements[0].x * measurements[2].y) + targets[2].y * (measurements[0].x * measurements[1].y - measurements[1].x * measurements[0].y)) / determinant);
+  calibration.A = ((target0X * (measurement1Y - measurement2Y) + target1X * (measurement2Y - measurement0Y) + target2X * (measurement0Y - measurement1Y)) / determinant);
+  calibration.B = ((target0X * (measurement2X - measurement1X) + target1X * (measurement0X - measurement2X) + target2X * (measurement1X - measurement0X)) / determinant);
+  calibration.C = ((target0X * (measurement1X * measurement2Y - measurement2X * measurement1Y) + target1X * (measurement2X * measurement0Y - measurement0X * measurement2Y) + target2X * (measurement0X * measurement1Y - measurement1X * measurement0Y)) / determinant);
+  calibration.D = ((target0Y * (measurement1Y - measurement2Y) + target1Y * (measurement2Y - measurement0Y) + target2Y * (measurement0Y - measurement1Y)) / determinant);
+  calibration.E = ((target0Y * (measurement2X - measurement1X) + target1Y * (measurement0X - measurement2X) + target2Y * (measurement1X - measurement0X)) / determinant);
+  calibration.F = ((target0Y * (measurement1X * measurement2Y - measurement2X * measurement1Y) + target1Y * (measurement2X * measurement0Y - measurement0X * measurement2Y) + target2Y * (measurement0X * measurement1Y - measurement1X * measurement0Y)) / determinant);
   calibration.width = DISPLAY_WIDTH;
   calibration.height = DISPLAY_HEIGHT;
   calibration.rotation = DISPLAY_ROTATION;
