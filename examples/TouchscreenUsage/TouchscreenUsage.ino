@@ -41,7 +41,7 @@
 #define DISPLAY_LED_PIN 12 // Some displays might not have this pin, -1 disables this option
 
 // Define the display's width and height in px
-// If the display is rotated by 90° or 270°, switch the width and height value
+// If the display is rotated by 90° or 270°, these values will automatically be swapped
 #define DISPLAY_WIDTH  240
 #define DISPLAY_HEIGHT 320
 
@@ -81,8 +81,21 @@ XPT2046 touchscreen(TOUCH_CS_PIN, TOUCH_IRQ_PIN);
   Adafruit_ILI9341 display(DISPLAY_CS_PIN, DISPLAY_DC_PIN, DISPLAY_RST_PIN);
 #endif
 
+// Depending on screen rotation, swap width and height
+#if (DISPLAY_ROTATION == 0) || (DISPLAY_ROTATION == 2)
+
+  const uint16_t displayWidth  = DISPLAY_WIDTH;
+  const uint16_t displayHeight = DISPLAY_HEIGHT;
+
+#elif (DISPLAY_ROTATION == 1) || (DISPLAY_ROTATION == 3)
+
+  const uint16_t displayWidth  = DISPLAY_HEIGHT;
+  const uint16_t displayHeight = DISPLAY_WIDTH;
+
+#endif
+
 // Create frame buffer object
-GFXcanvas16 canvas(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+GFXcanvas16 canvas(displayWidth, displayHeight);
 
 // ================================================================================================
 // Draw the touch position on screen
@@ -104,8 +117,8 @@ void drawTouchPosition(XPT2046::Point position) {
   canvas.print(positionString);
 
   // Draw a crosshair at the touch position
-  canvas.drawLine(0, position.y, DISPLAY_WIDTH, position.y, ILI9341_RED);
-  canvas.drawLine(position.x, 0, position.x, DISPLAY_HEIGHT, ILI9341_RED);
+  canvas.drawLine(0, position.y, displayWidth, position.y, ILI9341_RED);
+  canvas.drawLine(position.x, 0, position.x, displayHeight, ILI9341_RED);
   canvas.drawCircle(position.x, position.y, 5, ILI9341_RED);
 
   // Write frame buffer to the display
@@ -183,7 +196,7 @@ void setup() {
   #endif
 
   // Draw a crosshair at the center of the screen
-  drawTouchPosition({DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2});
+  drawTouchPosition({displayWidth / 2, displayHeight / 2});
 
 }
 

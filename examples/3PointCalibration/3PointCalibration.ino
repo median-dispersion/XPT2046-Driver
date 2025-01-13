@@ -40,7 +40,7 @@
 #define DISPLAY_LED_PIN 12 // Some displays might not have this pin, -1 disables this option
 
 // Define the display's width and height in px
-// If the display is rotated by 90° or 270°, switch the width and height value
+// If the display is rotated by 90° or 270°, these values will automatically be swapped
 #define DISPLAY_WIDTH  240
 #define DISPLAY_HEIGHT 320
 
@@ -65,8 +65,21 @@ XPT2046 touchscreen(TOUCH_CS_PIN, TOUCH_IRQ_PIN);
   Adafruit_ILI9341 display(DISPLAY_CS_PIN, DISPLAY_DC_PIN, DISPLAY_RST_PIN);
 #endif
 
+// Depending on screen rotation, swap width and height
+#if (DISPLAY_ROTATION == 0) || (DISPLAY_ROTATION == 2)
+
+  const uint16_t displayWidth  = DISPLAY_WIDTH;
+  const uint16_t displayHeight = DISPLAY_HEIGHT;
+
+#elif (DISPLAY_ROTATION == 1) || (DISPLAY_ROTATION == 3)
+
+  const uint16_t displayWidth  = DISPLAY_HEIGHT;
+  const uint16_t displayHeight = DISPLAY_WIDTH;
+
+#endif
+  
 // Create frame buffer object
-GFXcanvas16 canvas(DISPLAY_WIDTH, DISPLAY_HEIGHT);
+GFXcanvas16 canvas(displayWidth, displayHeight);
 
 //-------------------------------------------------------------------------------------------------
 // Function prototypes
@@ -125,7 +138,7 @@ void setup() {
   touchscreen.setDebounceTimeout(0);
 
   // Draw a crosshair at the center of the screen
-  drawTouchPosition({DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2});
+  drawTouchPosition({displayWidth / 2, displayHeight / 2});
 
 }
 
@@ -160,9 +173,9 @@ void calibrateTouchscreen() {
   // Array of touch targets
   XPT2046::Point targets[3] = {
 
-    {(uint16_t)(DISPLAY_WIDTH * 0.43), (uint16_t)(DISPLAY_HEIGHT * 0.05)},
-    {(uint16_t)(DISPLAY_WIDTH * 0.94), (uint16_t)(DISPLAY_HEIGHT * 0.54)},
-    {(uint16_t)(DISPLAY_WIDTH * 0.04), (uint16_t)(DISPLAY_HEIGHT * 0.96)}
+    {(uint16_t)(displayWidth * 0.43), (uint16_t)(displayHeight * 0.05)},
+    {(uint16_t)(displayWidth * 0.94), (uint16_t)(displayHeight * 0.54)},
+    {(uint16_t)(displayWidth * 0.04), (uint16_t)(displayHeight * 0.96)}
 
   };
   
@@ -279,8 +292,8 @@ void drawTouchTarget(XPT2046::Point position) {
   canvas.getTextBounds(message, 0, 0, &textX, &textY, &textWidth, &textHeight);
 
   // Calculate center of screen for message
-  int16_t cursorX = (DISPLAY_WIDTH - textWidth) / 2;
-  int16_t cursorY = (DISPLAY_HEIGHT - textHeight) / 2;
+  int16_t cursorX = (displayWidth - textWidth) / 2;
+  int16_t cursorY = (displayHeight - textHeight) / 2;
 
   // Set text color and cursor position
   canvas.setTextColor(ILI9341_WHITE);
@@ -336,8 +349,8 @@ void calculateCalibrationMatrix(XPT2046::Point *targets, XPT2046::Point *measure
   calibration.D = ((target0Y * (measurement1Y - measurement2Y) + target1Y * (measurement2Y - measurement0Y) + target2Y * (measurement0Y - measurement1Y)) / determinant);
   calibration.E = ((target0Y * (measurement2X - measurement1X) + target1Y * (measurement0X - measurement2X) + target2Y * (measurement1X - measurement0X)) / determinant);
   calibration.F = ((target0Y * (measurement1X * measurement2Y - measurement2X * measurement1Y) + target1Y * (measurement2X * measurement0Y - measurement0X * measurement2Y) + target2Y * (measurement0X * measurement1Y - measurement1X * measurement0Y)) / determinant);
-  calibration.width = DISPLAY_WIDTH;
-  calibration.height = DISPLAY_HEIGHT;
+  calibration.width = displayWidth;
+  calibration.height = displayHeight;
   calibration.rotation = DISPLAY_ROTATION;
 
 }
@@ -396,8 +409,8 @@ void drawTouchPosition(XPT2046::Point position) {
   canvas.print(positionString);
 
   // Draw a crosshair at the touch position
-  canvas.drawLine(0, position.y, DISPLAY_WIDTH, position.y, ILI9341_RED);
-  canvas.drawLine(position.x, 0, position.x, DISPLAY_HEIGHT, ILI9341_RED);
+  canvas.drawLine(0, position.y, displayWidth, position.y, ILI9341_RED);
+  canvas.drawLine(position.x, 0, position.x, displayHeight, ILI9341_RED);
   canvas.drawCircle(position.x, position.y, 5, ILI9341_RED);
 
   // Write frame buffer to the display
