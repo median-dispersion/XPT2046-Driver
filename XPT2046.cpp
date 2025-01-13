@@ -328,7 +328,9 @@ uint16_t XPT2046::_readData(uint8_t data) {
 bool XPT2046::_getTouchStatus() {
 
   // If the IRQ pin is low, a touch event is occurring
-  if (digitalRead(_irqPin) == LOW) {
+  // If SPI data transfer is enabled, the IRQ pin can become temporarily disabled
+  // Therefor skipping this check when SPI communication is occurring and relying on the pressure measurement only
+  if (digitalRead(_irqPin) == LOW || _transferEnabled) {
 
     // Enable SPI data transfer
     bool enabled = _enableDataTransfer();
